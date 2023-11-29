@@ -15,6 +15,25 @@ use crate::errors::R1CSError;
 use crate::generators::{BulletproofGens, PedersenGens};
 use crate::transcript::TranscriptProtocol;
 
+use ethnum::{I256};
+
+pub fn print_scalar_vec(v: &Vec<Scalar>) -> String {
+    let mut result: String = String::from("[");
+    for scalar in v {
+        let mut str_result: String;
+        let mut sc_str = I256::from_le_bytes(*scalar.as_bytes());
+        if sc_str.to_string().len() > 10 { 
+            let m_one = I256::from_le_bytes((-Scalar::one().reduce()).to_bytes());
+            str_result = (sc_str - (m_one + 1)).to_string();
+        } else {str_result = sc_str.to_string();}
+        result += &str_result;
+        result.push_str(", ");
+    }
+    result.push_str("]");
+
+    result
+    
+}
 /// A [`ConstraintSystem`] implementation for use by the verifier.
 ///
 /// The verifier adds high-level variable commitments to the transcript,
@@ -257,7 +276,7 @@ impl<'t> Verifier<'t> {
     /// This has the same logic as `ProverCS::flattened_constraints()`
     /// but also computes the constant terms (which the prover skips
     /// because they're not needed to construct the proof).
-    fn flattened_constraints(
+    pub fn flattened_constraints(
         &mut self,
         z: &Scalar,
     ) -> (Vec<Scalar>, Vec<Scalar>, Vec<Scalar>, Vec<Scalar>, Scalar) {
@@ -396,6 +415,11 @@ impl<'t> Verifier<'t> {
         let w = self.transcript.challenge_scalar(b"w");
 
         let (wL, wR, wO, wV, wc) = self.flattened_constraints(&z);
+        println!("{}", print_scalar_vec(&wL));
+        println!("{}", print_scalar_vec(&wR));
+        println!("{}", print_scalar_vec(&wO));
+        println!("{}", print_scalar_vec(&wV));
+        println!("{}", print_scalar_vec(&vec![wc; 1]));
 
         // Get IPP variables
         let (u_sq, u_inv_sq, s) = proof

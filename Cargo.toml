@@ -29,7 +29,9 @@ serde = { version = "1", default-features = false, features = ["alloc"] }
 serde_derive = { version = "1", default-features = false }
 thiserror = { version = "1", optional = true }
 merlin = { version = "2", default-features = false }
-clear_on_drop = { version = "0.2", default-features = false, features = ["nightly"] }
+clear_on_drop = { version = "0.2", default-features = false, features = ["nightly"]}
+ethnum = {version ="*"}
+
 
 [dev-dependencies]
 hex = "0.3"
@@ -38,9 +40,9 @@ bincode = "1"
 rand_chacha = "0.2"
 
 [features]
-default = ["std", "avx2_backend"]
+default = ["std","yoloproofs", "avx2_backend"]
 avx2_backend = ["curve25519-dalek/avx2_backend"]
-# yoloproofs = []
+yoloproofs = ["std"]
 std = ["rand", "rand/std", "thiserror"]
 
 [[test]]
