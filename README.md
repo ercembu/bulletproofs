@@ -1,3 +1,8 @@
+# Modifications to the existing Bulletproofs library 
+For:
+* experiment visibility 
+
+* usage of r1cs proofs modified
 # Bulletproofs
 
 <img
