@@ -8,6 +8,7 @@ mod linear_combination;
 mod proof;
 mod prover;
 mod verifier;
+mod perm_proof;
 
 pub use self::constraint_system::{
     ConstraintSystem, RandomizableConstraintSystem, RandomizedConstraintSystem,

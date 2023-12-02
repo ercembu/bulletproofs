@@ -261,6 +261,47 @@ impl<'t> Verifier<'t> {
         Variable::Committed(i)
     }
 
+    pub fn get_weights(&mut self) -> (Vec<Vec<Scalar>>, 
+                                      Vec<Vec<Scalar>>, 
+                                      Vec<Vec<Scalar>>, 
+                                      Vec<Vec<Scalar>>, 
+                                      Vec<Scalar>) {
+        let n = self.num_vars;
+        let m = self.V.len();
+
+        let Q = self.constraints.len();
+
+        let k = n / 2;
+
+        let mut wL = vec![vec![Scalar::zero(); n]; Q];
+        let mut wR = vec![vec![Scalar::zero(); n]; Q];
+        let mut wO = vec![vec![Scalar::zero(); n]; Q];
+        let mut wV = vec![vec![Scalar::zero(); m]; Q];
+        let mut wc = vec![Scalar::zero(); Q];
+        for (j, lc) in self.constraints.iter().enumerate() {
+            for (var, coeff) in &lc.terms {
+                println!("{}", j);
+                match var {
+                    Variable::MultiplierLeft(i) => {
+                        wL[j][*i] = *coeff;
+                    }
+                    Variable::MultiplierRight(i) => {
+                        wR[j][*i] = *coeff;
+                    }
+                    Variable::MultiplierOutput(i) => {
+                        wO[j][*i] = *coeff;
+                    }
+                    Variable::Committed(i) => {
+                        wV[j][*i] = -*coeff;
+                    }
+                    Variable::One() => {
+                        wc[j] = -Scalar::one();
+                    }
+                }
+            }
+        }
+        (wL, wR, wO, wV, wc)
+    }
     /// Use a challenge, `z`, to flatten the constraints in the
     /// constraint system into vectors used for proving and
     /// verification.
@@ -415,11 +456,13 @@ impl<'t> Verifier<'t> {
         let w = self.transcript.challenge_scalar(b"w");
 
         let (wL, wR, wO, wV, wc) = self.flattened_constraints(&z);
+        /*
         println!("{}", print_scalar_vec(&wL));
         println!("{}", print_scalar_vec(&wR));
         println!("{}", print_scalar_vec(&wO));
         println!("{}", print_scalar_vec(&wV));
         println!("{}", print_scalar_vec(&vec![wc; 1]));
+        */
 
         // Get IPP variables
         let (u_sq, u_inv_sq, s) = proof
