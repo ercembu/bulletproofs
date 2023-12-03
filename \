@@ -30,6 +30,19 @@ pub fn print_scalar_vec(v: &Vec<Scalar>) -> String {
     result
 }
 
+pub fn print_scalar_mat(m: &Vec<Vec<Scalar>>) -> String {
+    let mut result: String = String::from("[");
+    for v in m {
+        result.push_str(print_scalar_vec(&v).as_str());
+        result.push_str(",\n");
+    }
+    result.push_str("]");
+
+    println!("{}", result);
+    result
+
+}
+
 struct PermProof(R1CSProof);
 
 impl PermProof {
@@ -49,6 +62,7 @@ impl PermProof {
 
         let mut rng = rand::thread_rng();
 
+        /*
         let (last_l, last_r, last_o) = cs.multiply(x[k-1] - *c, x[k-2] - *c);
         let first_o = (0..k-2).rev().fold(last_o, |prev_o, i| {
             let (l, r, o) = cs.multiply(prev_o.into(), x[i] - *c);
@@ -62,6 +76,25 @@ impl PermProof {
         });
 
         cs.constrain(first_o - first_o_);
+        */
+        let mut aL: Vec<Variable>;
+        let mut aR: Vec<Variable>;
+        let mut aO: Vec<Variable>;
+        let (mut l, mut r, mut curr_out) = cs.multiply(x[0] - *c, x[1] - *c);
+        for i in (2..k) {
+            (l, r, curr_out) = cs.multiply(curr_out.into(), x[i] - *c);
+        }
+        let (mut l_, mut r_, mut curr_out_) = cs.multiply(x_[0] - *c, x_[1] - *c);
+        for i in (2..k) {
+            (l_, r_, curr_out_) = cs.multiply(curr_out_.into(), x_[i] - *c);
+        }
+
+        (_, _, curr_out_) = cs.multiply(curr_out_.into(), (-Scalar::one()).into());
+
+
+        let (_, _, last_out) = cs.multiply(curr_out + curr_out_, Scalar::one().into());
+
+        cs.constrain(last_out.into());
 
         Ok(())
     }
@@ -127,20 +160,20 @@ impl PermProof {
 
         PermProof::create_constraints(&mut verifier, input_vars, output_vars, chall)?;
 
-        let (wL, wR, wO, wV, wc) = verifier.flattened_constraints(chall);
+        //let (wL, wR, wO, wV, wc) = verifier.flattened_constraints(chall);
+        let (wL, wR, wO, wV, wc) = verifier.get_weights();
 
-        println!("{}", print_scalar_vec(&wL));
-        println!("{}", print_scalar_vec(&wR));
-        println!("{}", print_scalar_vec(&wO));
-        println!("{}", print_scalar_vec(&wV));
-        println!("{}", print_scalar_vec(&vec![wc; 1]));
+        print_scalar_mat(&wL);
+        print_scalar_mat(&wR);
+        print_scalar_mat(&wO);
+        print_scalar_mat(&wV);
+        println!("{}", print_scalar_vec(&wc));
 
         verifier.verify(&self.0, &pc_gens, &bp_gens)
 
     }
 }
 
-#[test]
 fn perm_basic_test() {
     // Construct generators. 1024 Bulletproofs generators is enough for 512-size shuffles.
     let k: usize = 4;
@@ -190,7 +223,7 @@ fn test_helper(k: usize) {
     let pc_gens = PedersenGens::default();
     let bp_gens = BulletproofGens::new((2 * k).next_power_of_two(), 1);
 
-    let challenge_scalar: Scalar = Scalar::from(0u64);
+    let challenge_scalar: Scalar = Scalar::from(2u64);
     let (proof, input_commits, output_commits) = {
         let mut rng = rand::thread_rng();
         let (min, max) = (0u64, 200u64);
@@ -225,5 +258,7 @@ fn test_helper(k: usize) {
 }
 #[test]
 fn perm_test_1() {
-    test_helper(4);
+    for k in 2..8 {
+        test_helper(k as usize);
+    }
 }

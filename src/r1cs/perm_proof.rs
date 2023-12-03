@@ -46,6 +46,54 @@ pub fn print_scalar_mat(m: &Vec<Vec<Scalar>>) -> String {
 struct PermProof(R1CSProof);
 
 impl PermProof {
+    fn create_var_vecs(
+        x: &[Scalar],
+        x_: &[Scalar],
+        c: &Scalar
+    ) -> (Vec<Scalar>, Vec<Scalar>, Vec<Scalar>) {
+        let n = x.len() * 2;
+        let mut a_L: Vec<Scalar> = vec![Scalar::zero(); n];//Vec::new();
+        let mut a_R: Vec<Scalar> = vec![Scalar::zero(); n];
+        let mut a_O: Vec<Scalar> = vec![Scalar::zero(); n];
+
+
+        let offset = (n-1)/2;
+
+        for i in 0..x.len() - 1 {
+
+            a_R[i] = x[i+1] - c;
+            a_R[i+offset] = x_[i+1] - c;
+
+            if i == 0 {
+                a_L[i] = x[i] - c;
+                a_L[i + offset] = x_[i] - c;
+
+            } else {
+                a_L[i] = a_O[i - 1];
+                a_L[i + offset] = a_O[i + offset - 1];
+
+            }
+
+
+            a_O[i] = a_L[i] * a_R[i];
+            a_O[i + offset] = a_L[i + offset] * a_R[i + offset];
+
+
+
+        }
+
+        a_L[n-2] = a_O[n-3];
+        a_R[n-2] = -Scalar::one().reduce();
+        a_O[n-2] = a_L[n-2] * a_R[n-2];
+
+        a_L[n-1] = a_O[offset] + a_O[n-2];
+        a_R[n-1] = Scalar::one();
+        a_O[n-1] = a_L[n-1] * a_L[n-1];
+        
+
+        (a_L, a_R, a_O)
+        
+    }
     fn create_constraints<CS: ConstraintSystem>(
         cs: &mut CS,
         x: Vec<Variable>,
@@ -62,6 +110,7 @@ impl PermProof {
 
         let mut rng = rand::thread_rng();
 
+        /*
         let (last_l, last_r, last_o) = cs.multiply(x[k-1] - *c, x[k-2] - *c);
         let first_o = (0..k-2).rev().fold(last_o, |prev_o, i| {
             let (l, r, o) = cs.multiply(prev_o.into(), x[i] - *c);
@@ -75,6 +124,22 @@ impl PermProof {
         });
 
         cs.constrain(first_o - first_o_);
+        */
+        let (_, _, mut curr_out) = cs.multiply(x[0] - *c, x[1] - *c);
+        for i in 2..k {
+            (_, _, curr_out) = cs.multiply(curr_out.into(), x[i] - *c);
+        }
+        let (_, _, mut curr_out_) = cs.multiply(x_[0] - *c, x_[1] - *c);
+        for i in 2..k {
+            (_, _, curr_out_) = cs.multiply(curr_out_.into(), x_[i] - *c);
+        }
+
+        (_, _, curr_out_) = cs.multiply(curr_out_.into(), (-Scalar::one()).into());
+
+
+        let (_, _, last_out) = cs.multiply(curr_out + curr_out_, Scalar::one().into());
+
+        cs.constrain(last_out.into());
 
         Ok(())
     }
@@ -90,6 +155,15 @@ impl PermProof {
         let k = input.len();
         transcript.commit_bytes(b"dom-sep", b"PermProof");
         transcript.commit_bytes(b"k", Scalar::from(k as u64).as_bytes());
+
+        let (aL, aR, aO): 
+            (Vec<_>, Vec<_>, Vec<_>) = 
+             PermProof::create_var_vecs(input,
+                                        output,
+                                        chall);
+        println!("{}", print_scalar_vec(&aL));
+        println!("{}", print_scalar_vec(&aR));
+        println!("{}", print_scalar_vec(&aO));
 
         let mut prover = Prover::new(&pc_gens, transcript);
 
@@ -143,11 +217,13 @@ impl PermProof {
         //let (wL, wR, wO, wV, wc) = verifier.flattened_constraints(chall);
         let (wL, wR, wO, wV, wc) = verifier.get_weights();
 
+        /*
         print_scalar_mat(&wL);
         print_scalar_mat(&wR);
         print_scalar_mat(&wO);
         print_scalar_mat(&wV);
         println!("{}", print_scalar_vec(&wc));
+        */
 
         verifier.verify(&self.0, &pc_gens, &bp_gens)
 
@@ -238,5 +314,5 @@ fn test_helper(k: usize) {
 }
 #[test]
 fn perm_test_1() {
-    test_helper(4);
+    test_helper(4 as usize);
 }

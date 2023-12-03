@@ -261,7 +261,9 @@ impl<'t> Verifier<'t> {
         Variable::Committed(i)
     }
 
-    pub fn get_weights(&mut self) -> (Vec<Vec<Scalar>>, 
+
+
+    pub fn get_weights(&self) -> (Vec<Vec<Scalar>>, 
                                       Vec<Vec<Scalar>>, 
                                       Vec<Vec<Scalar>>, 
                                       Vec<Vec<Scalar>>, 
@@ -273,29 +275,33 @@ impl<'t> Verifier<'t> {
 
         let k = n / 2;
 
-        let mut wL = vec![vec![Scalar::zero(); n]; Q];
-        let mut wR = vec![vec![Scalar::zero(); n]; Q];
-        let mut wO = vec![vec![Scalar::zero(); n]; Q];
-        let mut wV = vec![vec![Scalar::zero(); m]; Q];
-        let mut wc = vec![Scalar::zero(); Q];
+        let mut wL = vec![vec![Scalar::zero(); n]; Q-1];
+        let mut wR = vec![vec![Scalar::zero(); n]; Q-1];
+        let mut wO = vec![vec![Scalar::zero(); n]; Q-1];
+        let mut wV = vec![vec![Scalar::zero(); n+1]; Q-1];
+        let mut wc = vec![Scalar::zero(); n];
         for (j, lc) in self.constraints.iter().enumerate() {
             for (var, coeff) in &lc.terms {
-                println!("{}", j);
+                let mut gate_no: usize = j / 2;
                 match var {
                     Variable::MultiplierLeft(i) => {
-                        wL[j][*i] = *coeff;
+                        wL[gate_no][*i] = -*coeff;
                     }
                     Variable::MultiplierRight(i) => {
-                        wR[j][*i] = *coeff;
+                        wR[gate_no + n][*i] = -*coeff;
                     }
                     Variable::MultiplierOutput(i) => {
-                        wO[j][*i] = *coeff;
+                        if gate_no < n {wO[gate_no][*i] = *coeff;}
                     }
                     Variable::Committed(i) => {
-                        wV[j][*i] = -*coeff;
+                        if j % 2 != 0 {gate_no += n;}
+                        wV[gate_no][*i] = *coeff;
+                        if let Some(last) = wV[gate_no].last_mut() {
+                            *last = -Scalar::one();
+                        }
                     }
                     Variable::One() => {
-                        wc[j] = -Scalar::one();
+                        wc[gate_no] = *coeff;
                     }
                 }
             }
