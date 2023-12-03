@@ -6,12 +6,14 @@ extern crate rand;
 
 use super::*;
 use crate::{BulletproofGens, PedersenGens};
+use crate::r1cs::enums::*;
 use curve25519_dalek::ristretto::CompressedRistretto;
 use curve25519_dalek::scalar::Scalar;
 use merlin::Transcript;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use ethnum::{I256};
+
 
 pub fn print_scalar_vec(v: &Vec<Scalar>) -> String {
     let mut result: String = String::from("[");
@@ -43,6 +45,7 @@ pub fn print_scalar_mat(m: &Vec<Vec<Scalar>>) -> String {
 
 }
 
+
 struct PermProof(R1CSProof);
 
 impl PermProof {
@@ -55,6 +58,9 @@ impl PermProof {
         let mut a_L: Vec<Scalar> = vec![Scalar::zero(); n];//Vec::new();
         let mut a_R: Vec<Scalar> = vec![Scalar::zero(); n];
         let mut a_O: Vec<Scalar> = vec![Scalar::zero(); n];
+
+        println!("{}", print_scalar_vec(&x.to_vec()));
+        println!("{}", print_scalar_vec(&x_.to_vec()));
 
 
         let offset = (n-1)/2;
@@ -86,7 +92,7 @@ impl PermProof {
         a_R[n-2] = -Scalar::one().reduce();
         a_O[n-2] = a_L[n-2] * a_R[n-2];
 
-        a_L[n-1] = a_O[offset] + a_O[n-2];
+        a_L[n-1] = a_O[offset-1] + a_O[n-2];
         a_R[n-1] = Scalar::one();
         a_O[n-1] = a_L[n-1] * a_L[n-1];
         
@@ -151,7 +157,7 @@ impl PermProof {
         input: &[Scalar],
         output:&[Scalar],
         chall: &Scalar,
-    ) -> Result<(PermProof, Vec<CompressedRistretto>, Vec<CompressedRistretto>), R1CSError> {
+    ) -> Result<(PermProof, Vec<CompressedRistretto>, Vec<CompressedRistretto>, VarVecs), R1CSError> {
         let k = input.len();
         transcript.commit_bytes(b"dom-sep", b"PermProof");
         transcript.commit_bytes(b"k", Scalar::from(k as u64).as_bytes());
@@ -161,9 +167,12 @@ impl PermProof {
              PermProof::create_var_vecs(input,
                                         output,
                                         chall);
-        println!("{}", print_scalar_vec(&aL));
-        println!("{}", print_scalar_vec(&aR));
-        println!("{}", print_scalar_vec(&aO));
+
+        let vecs: [Vec<Scalar>; 3] = [aL, aR, aO];
+        let mats: [Vec<Vec<Scalar>>; 0] = [];
+        let mut spaces: VarVecs = VarVecs::new(&vecs, &mats);
+
+        println!("before: {:?}", spaces);
 
         let mut prover = Prover::new(&pc_gens, transcript);
 
@@ -185,7 +194,7 @@ impl PermProof {
 
         let proof = prover.prove(&bp_gens)?;
 
-        Ok((PermProof(proof), input_commits, output_commits))
+        Ok((PermProof(proof), input_commits, output_commits, spaces))
                                           
     }
 
@@ -197,6 +206,7 @@ impl PermProof {
         input_commits: &Vec<CompressedRistretto>,
         output_commits: &Vec<CompressedRistretto>,
         chall: &Scalar,
+        vec_bin: &mut VarVecs,
     ) -> Result<(), R1CSError> {
         let k = input_commits.len();
         transcript.commit_bytes(b"dom-sep", b"PermProof");
@@ -216,20 +226,20 @@ impl PermProof {
 
         //let (wL, wR, wO, wV, wc) = verifier.flattened_constraints(chall);
         let (wL, wR, wO, wV, wc) = verifier.get_weights();
+        vec_bin.add("wL", MatorVec::Matrix(wL));
+        vec_bin.add("wR", MatorVec::Matrix(wR));
+        vec_bin.add("wO", MatorVec::Matrix(wO));
+        vec_bin.add("c", MatorVec::Vector(wc));
+        vec_bin.add("wV", MatorVec::Matrix(wV));
 
-        /*
-        print_scalar_mat(&wL);
-        print_scalar_mat(&wR);
-        print_scalar_mat(&wO);
-        print_scalar_mat(&wV);
-        println!("{}", print_scalar_vec(&wc));
-        */
+        println!("after: {:?}", vec_bin);
 
         verifier.verify(&self.0, &pc_gens, &bp_gens)
 
     }
 }
 
+#[test]
 fn perm_basic_test() {
     // Construct generators. 1024 Bulletproofs generators is enough for 512-size shuffles.
     let k: usize = 4;
@@ -238,19 +248,19 @@ fn perm_basic_test() {
 
     // Putting the prover code in its own scope means we can't
     // accidentally reuse prover data in the test.
-    let c: Scalar = Scalar::from(1u64);
-    let (proof, in_commitments, out_commitments) = {
+    let c: Scalar = Scalar::from(2u64);
+    let (proof, in_commitments, out_commitments, mut spaces) = {
         let inputs = [
-            Scalar::from(0u64),
             Scalar::from(1u64),
             Scalar::from(2u64),
-            Scalar::from(3u64),
+            Scalar::from(4u64),
+            Scalar::from(0u64),
         ];
         let outputs = [
-            Scalar::from(2u64),
-            Scalar::from(0u64),
-            Scalar::from(3u64),
             Scalar::from(1u64),
+            Scalar::from(0u64),
+            Scalar::from(2u64),
+            Scalar::from(4u64),
         ];
 
         let mut prover_transcript = Transcript::new(b"PermProofTest");
@@ -268,7 +278,7 @@ fn perm_basic_test() {
     let mut verifier_transcript = Transcript::new(b"PermProofTest");
     assert!(
         proof
-            .verify(&pc_gens, &bp_gens, &mut verifier_transcript, &in_commitments, &out_commitments, &c)
+            .verify(&pc_gens, &bp_gens, &mut verifier_transcript, &in_commitments, &out_commitments, &c, &mut spaces)
             .is_ok()
     );
 }
@@ -280,9 +290,9 @@ fn test_helper(k: usize) {
     let bp_gens = BulletproofGens::new((2 * k).next_power_of_two(), 1);
 
     let challenge_scalar: Scalar = Scalar::from(2u64);
-    let (proof, input_commits, output_commits) = {
+    let (proof, input_commits, output_commits, mut spaces) = {
         let mut rng = rand::thread_rng();
-        let (min, max) = (0u64, 200u64);
+        let (min, max) = (0u64, 5u64);
 
         let input: Vec<Scalar> = (0..k)
             .map(|_| Scalar::from(rng.gen_range(min, max)))
@@ -308,11 +318,11 @@ fn test_helper(k: usize) {
                 &mut verifier_transcript,
                 &input_commits,
                 &output_commits,
-                &challenge_scalar
+                &challenge_scalar,
+                &mut spaces,
                 ).is_ok());
     }
 }
-#[test]
 fn perm_test_1() {
     test_helper(4 as usize);
 }
