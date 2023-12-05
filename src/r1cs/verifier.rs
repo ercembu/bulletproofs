@@ -279,7 +279,7 @@ impl<'t> Verifier<'t> {
         let mut wR = vec![vec![Scalar::zero(); n]; Q-1];
         let mut wO = vec![vec![Scalar::zero(); n]; Q-1];
         let mut wV = vec![vec![Scalar::zero(); n+1]; Q-1];
-        let mut wc = vec![Scalar::zero(); n];
+        let mut wc = vec![Scalar::zero(); Q-1];
         for (j, lc) in self.constraints.iter().enumerate() {
             for (var, coeff) in &lc.terms {
                 let mut gate_no: usize = j / 2;
@@ -301,7 +301,10 @@ impl<'t> Verifier<'t> {
                         }
                     }
                     Variable::One() => {
-                        wc[gate_no] = *coeff;
+                        if gate_no + n>= wc.len()-2 
+                        {
+                            wc[gate_no + n] = *coeff;
+                        }
                     }
                 }
             }

@@ -10,6 +10,7 @@ mod prover;
 mod verifier;
 mod perm_proof;
 mod enums;
+mod util;
 
 pub use self::constraint_system::{
     ConstraintSystem, RandomizableConstraintSystem, RandomizedConstraintSystem,

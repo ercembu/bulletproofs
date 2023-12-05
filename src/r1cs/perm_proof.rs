@@ -114,23 +114,6 @@ impl PermProof {
             return Ok(());
         }
 
-        let mut rng = rand::thread_rng();
-
-        /*
-        let (last_l, last_r, last_o) = cs.multiply(x[k-1] - *c, x[k-2] - *c);
-        let first_o = (0..k-2).rev().fold(last_o, |prev_o, i| {
-            let (l, r, o) = cs.multiply(prev_o.into(), x[i] - *c);
-            o
-        });
-
-        let (last_l_, last_r_, last_o_) = cs.multiply(x_[k-1] - *c, x_[k-2] - *c);
-        let first_o_ = (0..k-2).rev().fold(last_o_, |prev_o, i| {
-            let (l, r, o) = cs.multiply(prev_o.into(), x_[i] - *c);
-            o
-        });
-
-        cs.constrain(first_o - first_o_);
-        */
         let (_, _, mut curr_out) = cs.multiply(x[0] - *c, x[1] - *c);
         for i in 2..k {
             (_, _, curr_out) = cs.multiply(curr_out.into(), x[i] - *c);
@@ -172,7 +155,9 @@ impl PermProof {
         let mats: [Vec<Vec<Scalar>>; 0] = [];
         let mut spaces: VarVecs = VarVecs::new(&vecs, &mats);
 
-        println!("before: {:?}", spaces);
+        spaces.add("v", MatorVec::Vector([input.clone(), output.clone(), &[chall.clone()]].concat()));
+
+        println!("before: {}", spaces.print());
 
         let mut prover = Prover::new(&pc_gens, transcript);
 
@@ -232,7 +217,9 @@ impl PermProof {
         vec_bin.add("c", MatorVec::Vector(wc));
         vec_bin.add("wV", MatorVec::Matrix(wV));
 
-        println!("after: {:?}", vec_bin);
+        println!("after: {}", vec_bin.print());
+
+        let _ = vec_bin.verify();
 
         verifier.verify(&self.0, &pc_gens, &bp_gens)
 
@@ -248,17 +235,17 @@ fn perm_basic_test() {
 
     // Putting the prover code in its own scope means we can't
     // accidentally reuse prover data in the test.
-    let c: Scalar = Scalar::from(2u64);
+    let c: Scalar = Scalar::from(25u64);
     let (proof, in_commitments, out_commitments, mut spaces) = {
         let inputs = [
-            Scalar::from(1u64),
             Scalar::from(2u64),
+            Scalar::from(5u64),
             Scalar::from(4u64),
-            Scalar::from(0u64),
+            Scalar::from(3u64),
         ];
         let outputs = [
-            Scalar::from(1u64),
-            Scalar::from(0u64),
+            Scalar::from(5u64),
+            Scalar::from(3u64),
             Scalar::from(2u64),
             Scalar::from(4u64),
         ];

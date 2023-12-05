@@ -1,65 +1,48 @@
+use super::util::*;
 use curve25519_dalek::scalar::Scalar;
 use std::collections::HashMap;
 
+use std::error;
 use std::fmt;
 use ethnum::{I256};
 
+
+
+#[derive(Clone, Debug)]
+pub struct MatCheckError;
+
+impl fmt::Display for MatCheckError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "matrice mult dont hold")
+   }
+}
+
+/// enum for either matrix or vector return values
 pub enum MatorVec {
     Vector(Vec<Scalar>),
     Matrix(Vec<Vec<Scalar>>),
 }
+
+/// bin for keeping different kind of vectors needed for verification
 #[derive(Clone, Default)]
-pub(crate) struct VarVecs {
+pub struct VarVecs {
     pub vectors: HashMap<String, Vec<Scalar>>,
     pub matrices: HashMap<String, Vec<Vec<Scalar>>>,
 }
 
-pub fn print_scalar_vec(v: &Vec<Scalar>) -> String {
-    let mut result: String = String::from("[");
-    for scalar in v {
-        let mut str_result: String;
-        let mut sc_str = I256::from_le_bytes(*scalar.as_bytes());
-        if sc_str.to_string().len() > 10 { 
-            let m_one = I256::from_le_bytes((-Scalar::one().reduce()).to_bytes());
-            str_result = (sc_str - (m_one + 1)).to_string();
-        } else {str_result = sc_str.to_string();}
-        result += &str_result;
-        result.push_str(", ");
-    }
-    result.push_str("]");
-
-    result
-}
-
-pub fn print_scalar_mat(m: &Vec<Vec<Scalar>>) -> String {
-    let mut result: String = String::from("[");
-    for v in m {
-        result.push_str(print_scalar_vec(&v).as_str());
-        result.push_str(",\n");
-    }
-    result.push_str("]");
-
-    result
-
-}
-impl fmt::Debug for VarVecs {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl VarVecs {
+    pub fn print(&self) -> String {
         let mut res = String::default();
 
-        println!("{:?}", self.vectors);
-        let _ = self.vectors.iter().map(|(k, v)| {
-            res.push_str(&(k.clone() + "\n" + &print_scalar_vec(v)))
-        });
+        for (k, v) in self.vectors.iter() {
+            res.push_str(&(k.clone() + ": " + &print_scalar_vec(v) + "\n"))
+        }
 
-        let _ = self.matrices.iter().map(|(k, v)| {
-            res.push_str(&(k.clone() + "\n" + &print_scalar_mat(v)))
-        });
-        write!(f, "{}", res)
+        for (k, v) in self.matrices.iter() {
+            res.push_str(&(k.clone() + ":\n" + &print_scalar_mat(v) + "\n"))
+        }
+        res
     }
-}
-
-
-impl VarVecs {
     pub fn index(&self, index: &str) -> MatorVec {
         match index.starts_with("w") {
             true => MatorVec::Matrix(self.matrices[index].clone()),
@@ -68,40 +51,78 @@ impl VarVecs {
     }
     pub fn add(&mut self, index: &str, val: MatorVec) {
         //TODO: doesnt save states
-        match val {
+        let _ = match val {
             MatorVec::Matrix(i) => {self.matrices.insert(index.into(), i.clone()); ()}
             MatorVec::Vector(i) => {self.vectors.insert(index.into(), i.clone()); ()}
         };
     }
     pub fn new(vectors: &[Vec<Scalar>], matrices: &[Vec<Vec<Scalar>>]) -> Self {
         //TODO: doesnt save states
-        let mut res: VarVecs = VarVecs::default();
-        assert!(vectors.len() <= 4, "aL, aR, aO, c are the only 4 vectors");
+        let mut vecs: HashMap<String, Vec<Scalar>> = HashMap::new();
+        let mut mats: HashMap<String, Vec<Vec<Scalar>>> = HashMap::new();
+        assert!(vectors.len() <= 5, "aL, aR, aO, c, v are the only 4 vectors");
         assert!(matrices.len() <= 4, "wL, wR, wO, wV are the only 4 vectors");
-        let _ = vectors.iter()
-            .enumerate()
-            .map(|(i, v)| {
+        for (i, v) in vectors.iter()
+                            .enumerate() {
                 match i {
-                    0 => res.vectors.insert("aL".into(), v.clone()),
-                    1 => res.vectors.insert("aR".into(), v.clone()),
-                    2 => res.vectors.insert("aO".into(), v.clone()),
-                    3 => res.vectors.insert("c".into(), v.clone()),
+                    0 => vecs.insert("aL".into(), v.clone()),
+                    1 => vecs.insert("aR".into(), v.clone()),
+                    2 => vecs.insert("aO".into(), v.clone()),
+                    3 => vecs.insert("c".into(), v.clone()),
+                    4 => vecs.insert("v".into(), v.clone()),
                     _ => None
                 };
-            });
+            }
 
-        let _ = matrices.iter()
-            .enumerate()
-            .map(|(i, v)| {
+        for (i, v) in matrices.iter()
+                            .enumerate() {
                 match i {
-                    0 => res.matrices.insert("wL".into(), v.clone()),
-                    1 => res.matrices.insert("wR".into(), v.clone()),
-                    2 => res.matrices.insert("wO".into(), v.clone()),
-                    3 => res.matrices.insert("wV".into(), v.clone()),
+                    0 => mats.insert("wL".into(), v.clone()),
+                    1 => mats.insert("wR".into(), v.clone()),
+                    2 => mats.insert("wO".into(), v.clone()),
+                    3 => mats.insert("wV".into(), v.clone()),
                     _ => None
                 };
-            });
-        res
+            }
+        VarVecs{vectors: vecs, matrices: mats}
+    }
+
+    pub fn verify(&self) -> Result<(), MatCheckError>{
+        let aL: Vec<Scalar> = self.vectors["aL"].clone();
+        let aR: Vec<Scalar> = self.vectors["aR"].clone();
+        let aO: Vec<Scalar> = self.vectors["aO"].clone();
+        let v: Vec<Scalar> = self.vectors["v"].clone();
+        let c: Vec<Scalar> = self.vectors["c"].clone();
+
+        let wL: Vec<Vec<Scalar>> = self.matrices["wL"].clone();
+        let wR: Vec<Vec<Scalar>> = self.matrices["wR"].clone();
+        let wO: Vec<Vec<Scalar>> = self.matrices["wO"].clone();
+        let wV: Vec<Vec<Scalar>> = self.matrices["wV"].clone();
+
+        let L = mv_mult(&wL, &aL);
+        let R = mv_mult(&wR, &aR);
+        let O = mv_mult(&wO, &aO);
+        let V = mv_mult(&wV, &v);
+        println!("L: {}", print_scalar_vec(&L));
+        println!("R: {}", print_scalar_vec(&R));
+        println!("O: {}", print_scalar_vec(&O));
+        println!("V: {}", print_scalar_vec(&V));
+        println!("c: {}", print_scalar_vec(&c));
+
+        let left_side: Vec<Scalar> = L.iter()
+            .zip(R.iter()
+                 .zip(O.iter()))
+            .map(|(l, (r, o))| l + r - o)
+            .collect();
+        let right_side: Vec<Scalar> = V.iter()
+            .zip(c.iter())
+            .map(|(v_, c_)| v_ + c_)
+            .collect();
+
+        println!("{}", print_scalar_vec(&left_side));
+        println!("{}", print_scalar_vec(&right_side));
+        Ok(())
+        
     }
 
 
