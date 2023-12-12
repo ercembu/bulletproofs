@@ -121,7 +121,16 @@ impl VarVecs {
 
         println!("{}", print_scalar_vec(&left_side));
         println!("{}", print_scalar_vec(&right_side));
-        Ok(())
+        let results: Vec<bool> = left_side.iter()
+            .zip(right_side.iter())
+            .map(|(l, r)| l == r)
+            .collect();
+
+        if results.iter().all(|x| *x) {
+            Ok(())
+        } else {
+            Err(MatCheckError)
+        }
         
     }
 

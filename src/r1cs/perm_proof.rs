@@ -219,7 +219,7 @@ impl PermProof {
 
         println!("after: {}", vec_bin.print());
 
-        let _ = vec_bin.verify();
+        assert!(vec_bin.verify().is_ok());
 
         verifier.verify(&self.0, &pc_gens, &bp_gens)
 
@@ -235,17 +235,17 @@ fn perm_basic_test() {
 
     // Putting the prover code in its own scope means we can't
     // accidentally reuse prover data in the test.
-    let c: Scalar = Scalar::from(25u64);
+    let c: Scalar = Scalar::from(3u64);
     let (proof, in_commitments, out_commitments, mut spaces) = {
         let inputs = [
+            Scalar::from(1u64),
             Scalar::from(2u64),
-            Scalar::from(5u64),
             Scalar::from(4u64),
-            Scalar::from(3u64),
+            Scalar::from(0u64),
         ];
         let outputs = [
-            Scalar::from(5u64),
-            Scalar::from(3u64),
+            Scalar::from(1u64),
+            Scalar::from(0u64),
             Scalar::from(2u64),
             Scalar::from(4u64),
         ];
@@ -272,13 +272,13 @@ fn perm_basic_test() {
 
 fn test_helper(k: usize) {
     use rand::Rng;
+    let mut rng = rand::thread_rng();
 
     let pc_gens = PedersenGens::default();
     let bp_gens = BulletproofGens::new((2 * k).next_power_of_two(), 1);
 
-    let challenge_scalar: Scalar = Scalar::from(2u64);
+    let challenge_scalar: Scalar = Scalar::random(&mut rng);
     let (proof, input_commits, output_commits, mut spaces) = {
-        let mut rng = rand::thread_rng();
         let (min, max) = (0u64, 5u64);
 
         let input: Vec<Scalar> = (0..k)
@@ -311,5 +311,5 @@ fn test_helper(k: usize) {
     }
 }
 fn perm_test_1() {
-    test_helper(4 as usize);
+    test_helper(8 as usize);
 }
