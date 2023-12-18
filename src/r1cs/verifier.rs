@@ -15,25 +15,6 @@ use crate::errors::R1CSError;
 use crate::generators::{BulletproofGens, PedersenGens};
 use crate::transcript::TranscriptProtocol;
 
-use ethnum::{I256};
-
-pub fn print_scalar_vec(v: &Vec<Scalar>) -> String {
-    let mut result: String = String::from("[");
-    for scalar in v {
-        let mut str_result: String;
-        let mut sc_str = I256::from_le_bytes(*scalar.as_bytes());
-        if sc_str.to_string().len() > 10 { 
-            let m_one = I256::from_le_bytes((-Scalar::one().reduce()).to_bytes());
-            str_result = (sc_str - (m_one + 1)).to_string();
-        } else {str_result = sc_str.to_string();}
-        result += &str_result;
-        result.push_str(", ");
-    }
-    result.push_str("]");
-
-    result
-    
-}
 /// A [`ConstraintSystem`] implementation for use by the verifier.
 ///
 /// The verifier adds high-level variable commitments to the transcript,
@@ -269,11 +250,7 @@ impl<'t> Verifier<'t> {
                                       Vec<Vec<Scalar>>, 
                                       Vec<Scalar>) {
         let n = self.num_vars;
-        let m = self.V.len();
-
         let Q = self.constraints.len();
-
-        let k = n / 2;
 
         let mut wL = vec![vec![Scalar::zero(); n]; Q-1];
         let mut wR = vec![vec![Scalar::zero(); n]; Q-1];

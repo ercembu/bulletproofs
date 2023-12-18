@@ -1,4 +1,5 @@
 #![allow(non_snake_case)]
+#![allow(dead_code)]
 #![doc(include = "../docs/inner-product-protocol.md")]
 
 extern crate alloc;

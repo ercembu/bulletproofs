@@ -12,7 +12,6 @@ use curve25519_dalek::scalar::Scalar;
 use merlin::Transcript;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
-use ethnum::{I256};
 
 // Shuffle gadget (documented in markdown file)
 
@@ -256,7 +255,7 @@ fn example_gadget_proof(
 
     // 2. Commit high-level variables
     let (commitments, vars): (Vec<_>, Vec<_>) = [a1, a2, b1, b2, c1]
-        .into_iter()
+        .iter()
         .map(|x| prover.commit(Scalar::from(*x), Scalar::random(&mut thread_rng())))
         .unzip();
 
@@ -293,7 +292,7 @@ fn example_gadget_verify(
     // 2. Commit high-level variables
     let vars: Vec<_> = commitments.iter().map(|V| verifier.commit(*V)).collect();
 
-    let c2_cl = c2.clone();
+    //let c2_cl = c2.clone();
     // 3. Build a CS
     example_gadget(
         &mut verifier,

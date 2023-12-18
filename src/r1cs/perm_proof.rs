@@ -1,4 +1,5 @@
 #![allow(non_snake_case)]
+#![allow(dead_code)]
 
 extern crate curve25519_dalek;
 extern crate merlin;
@@ -11,44 +12,14 @@ use curve25519_dalek::ristretto::CompressedRistretto;
 use curve25519_dalek::scalar::Scalar;
 use merlin::Transcript;
 use rand::seq::SliceRandom;
-use rand::thread_rng;
-use ethnum::{I256};
-
-
-pub fn print_scalar_vec(v: &Vec<Scalar>) -> String {
-    let mut result: String = String::from("[");
-    for scalar in v {
-        let mut str_result: String;
-        let mut sc_str = I256::from_le_bytes(*scalar.as_bytes());
-        if sc_str.to_string().len() > 10 { 
-            let m_one = I256::from_le_bytes((-Scalar::one().reduce()).to_bytes());
-            str_result = (sc_str - (m_one + 1)).to_string();
-        } else {str_result = sc_str.to_string();}
-        result += &str_result;
-        result.push_str(", ");
-    }
-    result.push_str("]");
-
-    result
-}
-
-pub fn print_scalar_mat(m: &Vec<Vec<Scalar>>) -> String {
-    let mut result: String = String::from("[");
-    for v in m {
-        result.push_str(print_scalar_vec(&v).as_str());
-        result.push_str(",\n");
-    }
-    result.push_str("]");
-
-    println!("{}", result);
-    result
-
-}
-
 
 struct PermProof(R1CSProof);
 
 impl PermProof {
+    ///Create the input and output vectors non-blinded(for verification)
+    /// for the permutation circuit of x and x_
+    /// with the challenge scalar c
+    ///Returns: (aL, aR, aO)
     fn create_var_vecs(
         x: &[Scalar],
         x_: &[Scalar],
@@ -58,10 +29,6 @@ impl PermProof {
         let mut a_L: Vec<Scalar> = vec![Scalar::zero(); n];//Vec::new();
         let mut a_R: Vec<Scalar> = vec![Scalar::zero(); n];
         let mut a_O: Vec<Scalar> = vec![Scalar::zero(); n];
-
-        println!("{}", print_scalar_vec(&x.to_vec()));
-        println!("{}", print_scalar_vec(&x_.to_vec()));
-
 
         let offset = (n-1)/2;
 
@@ -100,6 +67,11 @@ impl PermProof {
         (a_L, a_R, a_O)
         
     }
+
+    ///Create the Linear Constraints System defined
+    ///by the permutation circuit of x and x_ 
+    ///in the ConstraintSystem cs
+    ///with the challenge scalar c
     fn create_constraints<CS: ConstraintSystem>(
         cs: &mut CS,
         x: Vec<Variable>,
@@ -114,25 +86,43 @@ impl PermProof {
             return Ok(());
         }
 
-        let (_, _, mut curr_out) = cs.multiply(x[0] - *c, x[1] - *c);
+        //Original version multiplication constraints
+        let (_, _, mut original_out) = cs.multiply(x[0] - *c, x[1] - *c);
+
         for i in 2..k {
-            (_, _, curr_out) = cs.multiply(curr_out.into(), x[i] - *c);
-        }
-        let (_, _, mut curr_out_) = cs.multiply(x_[0] - *c, x_[1] - *c);
-        for i in 2..k {
-            (_, _, curr_out_) = cs.multiply(curr_out_.into(), x_[i] - *c);
+            (_, _, original_out) = cs.multiply(original_out.into(), x[i] - *c);
         }
 
-        (_, _, curr_out_) = cs.multiply(curr_out_.into(), (-Scalar::one()).into());
+        //Permutated version multiplication constraints
+        let (_, _, mut permd_out) = cs.multiply(x_[0] - *c, x_[1] - *c);
+
+        for i in 2..k {
+            (_, _, permd_out) = cs.multiply(permd_out.into(), x_[i] - *c);
+        }
+
+        (_, _, permd_out) = cs.multiply(permd_out.into(), (-Scalar::one()).into());
 
 
-        let (_, _, last_out) = cs.multiply(curr_out + curr_out_, Scalar::one().into());
+        //Root of the circuit must be a multiplication gate
+        let (_, _, last_out) = cs.multiply(original_out + permd_out, Scalar::one().into());
 
         cs.constrain(last_out.into());
 
         Ok(())
     }
 
+    ///Create the proof from:
+    /// pc_gens for commitments
+    /// bp_gens for commitments to bulletproofs
+    /// transcript for commiting variables
+    /// input unshuffled deck
+    /// output shuffled deck
+    /// chall challenge scalar
+    ///Returns:
+    /// PermProof, as proof
+    /// input commitments
+    /// output commitments
+    /// VarVecs bin
     pub fn prove<'a, 'b>(
         pc_gens: &'b PedersenGens,
         bp_gens: &'b BulletproofGens,
@@ -142,8 +132,8 @@ impl PermProof {
         chall: &Scalar,
     ) -> Result<(PermProof, Vec<CompressedRistretto>, Vec<CompressedRistretto>, VarVecs), R1CSError> {
         let k = input.len();
-        transcript.commit_bytes(b"dom-sep", b"PermProof");
-        transcript.commit_bytes(b"k", Scalar::from(k as u64).as_bytes());
+        transcript.append_message(b"dom-sep", b"PermProof");
+        transcript.append_message(b"k", Scalar::from(k as u64).as_bytes());
 
         let (aL, aR, aO): 
             (Vec<_>, Vec<_>, Vec<_>) = 
@@ -153,11 +143,9 @@ impl PermProof {
 
         let vecs: [Vec<Scalar>; 3] = [aL, aR, aO];
         let mats: [Vec<Vec<Scalar>>; 0] = [];
-        let mut spaces: VarVecs = VarVecs::new(&vecs, &mats);
+        let mut vector_bin: VarVecs = VarVecs::new(&vecs, &mats);
 
-        spaces.add("v", MatorVec::Vector([input.clone(), output.clone(), &[chall.clone()]].concat()));
-
-        println!("before: {}", spaces.print());
+        vector_bin.add("v", MatorVec::Vector([input, output, &[chall.clone()]].concat()));
 
         let mut prover = Prover::new(&pc_gens, transcript);
 
@@ -179,10 +167,21 @@ impl PermProof {
 
         let proof = prover.prove(&bp_gens)?;
 
-        Ok((PermProof(proof), input_commits, output_commits, spaces))
+        Ok((PermProof(proof), input_commits, output_commits, vector_bin))
                                           
     }
 
+    ///Verify the proof created bound to 
+    /// input and output commitments and PermProof
+    ///Verification is two fold:
+    ///     First the weights and variables 
+    ///     are verified to hold the statement:
+    ///         wL*aL + wR*aR - wO*aO = wV*v + c
+    ///     Second the algorithm of bulletproof R1CS proof runs
+    /// Returns:
+    ///     (): if holds
+    ///     R1CSError: if R1CS doesnt hold
+    ///     MatCheckError(panicks): if the weights doesnt hold
     pub fn verify <'a, 'b>(
         &self,
         pc_gens: &'b PedersenGens,
@@ -194,8 +193,9 @@ impl PermProof {
         vec_bin: &mut VarVecs,
     ) -> Result<(), R1CSError> {
         let k = input_commits.len();
-        transcript.commit_bytes(b"dom-sep", b"PermProof");
-        transcript.commit_bytes(b"k", Scalar::from(k as u64).as_bytes());
+
+        transcript.append_message(b"dom-sep", b"PermProof");
+        transcript.append_message(b"k", Scalar::from(k as u64).as_bytes());
 
         let mut verifier = Verifier::new(transcript);
 
@@ -209,18 +209,21 @@ impl PermProof {
 
         PermProof::create_constraints(&mut verifier, input_vars, output_vars, chall)?;
 
-        //let (wL, wR, wO, wV, wc) = verifier.flattened_constraints(chall);
+        //Extract weights
         let (wL, wR, wO, wV, wc) = verifier.get_weights();
+
+        //Add extracted weights to the bin 
+        //for weight verification
         vec_bin.add("wL", MatorVec::Matrix(wL));
         vec_bin.add("wR", MatorVec::Matrix(wR));
         vec_bin.add("wO", MatorVec::Matrix(wO));
         vec_bin.add("c", MatorVec::Vector(wc));
         vec_bin.add("wV", MatorVec::Matrix(wV));
 
-        println!("after: {}", vec_bin.print());
-
+        //Verify weights
         assert!(vec_bin.verify().is_ok());
 
+        //Verify R1CS
         verifier.verify(&self.0, &pc_gens, &bp_gens)
 
     }
@@ -310,6 +313,8 @@ fn test_helper(k: usize) {
                 ).is_ok());
     }
 }
+
+#[test]
 fn perm_test_1() {
-    test_helper(8 as usize);
+    test_helper(52 as usize);
 }

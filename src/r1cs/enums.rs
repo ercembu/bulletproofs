@@ -1,12 +1,11 @@
+#![allow(non_snake_case)]
+#![allow(dead_code)]
+
 use super::util::*;
 use curve25519_dalek::scalar::Scalar;
 use std::collections::HashMap;
 
-use std::error;
 use std::fmt;
-use ethnum::{I256};
-
-
 
 #[derive(Clone, Debug)]
 pub struct MatCheckError;
@@ -23,7 +22,19 @@ pub enum MatorVec {
     Matrix(Vec<Vec<Scalar>>),
 }
 
-/// bin for keeping different kind of vectors needed for verification
+/// bin for keeping
+///     Vectors:
+///         - Multiplication Gate Left Inputs: aL
+///         - Multiplication Gate Right Inputs: aR
+///         - Multiplication Gate Outputs: aO
+///         - Constants: c
+///         - Variables: v
+///     Matrices:
+///         - Left Input Weights for Verification: wL
+///         - Right Input Weights for Verification: wR
+///         - Output Weights for Verification: wO
+///         - Variable Weights for Verification: wV
+/// needed for verification
 #[derive(Clone, Default)]
 pub struct VarVecs {
     pub vectors: HashMap<String, Vec<Scalar>>,
@@ -31,6 +42,8 @@ pub struct VarVecs {
 }
 
 impl VarVecs {
+    
+    ///Return the state of the current bin as String
     pub fn print(&self) -> String {
         let mut res = String::default();
 
@@ -43,25 +56,34 @@ impl VarVecs {
         }
         res
     }
+
+    ///Return the corresponding index(key) value as MatorVec
     pub fn index(&self, index: &str) -> MatorVec {
         match index.starts_with("w") {
             true => MatorVec::Matrix(self.matrices[index].clone()),
             false => MatorVec::Vector(self.vectors[index].clone()),
         }
     }
+
+    ///Add MatorVec to the corresponding index
     pub fn add(&mut self, index: &str, val: MatorVec) {
-        //TODO: doesnt save states
         let _ = match val {
             MatorVec::Matrix(i) => {self.matrices.insert(index.into(), i.clone()); ()}
             MatorVec::Vector(i) => {self.vectors.insert(index.into(), i.clone()); ()}
         };
     }
+
+    ///Constructor that can take lists of vectors and matrices
+    /// It needs an order for the addition:
+    ///     Vectors: [aL, aR, aO, c, v], empty values are ok
+    ///     Vectors: [wL, wR, wO, wV], empty values are ok
     pub fn new(vectors: &[Vec<Scalar>], matrices: &[Vec<Vec<Scalar>>]) -> Self {
-        //TODO: doesnt save states
         let mut vecs: HashMap<String, Vec<Scalar>> = HashMap::new();
         let mut mats: HashMap<String, Vec<Vec<Scalar>>> = HashMap::new();
+
         assert!(vectors.len() <= 5, "aL, aR, aO, c, v are the only 4 vectors");
         assert!(matrices.len() <= 4, "wL, wR, wO, wV are the only 4 vectors");
+
         for (i, v) in vectors.iter()
                             .enumerate() {
                 match i {
@@ -84,9 +106,14 @@ impl VarVecs {
                     _ => None
                 };
             }
+
         VarVecs{vectors: vecs, matrices: mats}
     }
 
+    ///Verify the equation:
+    /// wL*aL + wR*aR - wO*aO = wV*v + c
+    ///Return () if holds
+    ///       MatCheckError if not
     pub fn verify(&self) -> Result<(), MatCheckError>{
         let aL: Vec<Scalar> = self.vectors["aL"].clone();
         let aR: Vec<Scalar> = self.vectors["aR"].clone();
@@ -103,11 +130,14 @@ impl VarVecs {
         let R = mv_mult(&wR, &aR);
         let O = mv_mult(&wO, &aO);
         let V = mv_mult(&wV, &v);
-        println!("L: {}", print_scalar_vec(&L));
-        println!("R: {}", print_scalar_vec(&R));
-        println!("O: {}", print_scalar_vec(&O));
-        println!("V: {}", print_scalar_vec(&V));
-        println!("c: {}", print_scalar_vec(&c));
+
+        println!("{}", self.print());
+
+        println!("multiplication term L: {}", print_scalar_vec(&L));
+        println!("multiplication term R: {}", print_scalar_vec(&R));
+        println!("multiplication term O: {}", print_scalar_vec(&O));
+        println!("multiplication term V: {}", print_scalar_vec(&V));
+        println!("constant term c: {}", print_scalar_vec(&c));
 
         let left_side: Vec<Scalar> = L.iter()
             .zip(R.iter()
@@ -119,8 +149,8 @@ impl VarVecs {
             .map(|(v_, c_)| v_ + c_)
             .collect();
 
-        println!("{}", print_scalar_vec(&left_side));
-        println!("{}", print_scalar_vec(&right_side));
+        println!("left hand side  = {}", print_scalar_vec(&left_side));
+        println!("right hand side = {}", print_scalar_vec(&right_side));
         let results: Vec<bool> = left_side.iter()
             .zip(right_side.iter())
             .map(|(l, r)| l == r)
